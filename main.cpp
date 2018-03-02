@@ -7,15 +7,13 @@
 
 #include "process.cpp"
 #include <iostream>
+#include <fstream>
+#include <string>
 #include <cstdlib>
 #include <vector>
 #include <fstream>
-
-int main(int argc, char* argv[]){
-    std::vector<Process> p;
-    std::string input_file = argv[1];
+void read_p(std::vector<Process> &p, std::ifstream &input){
     std::string line;
-    std::ifstream input(input_file);
     char p_id;
     int iat; //arrival time
     int cbt; //cpu burst time
@@ -29,8 +27,9 @@ int main(int argc, char* argv[]){
         itr = line.begin();
         if(*itr == '#'){
         }
+        
         else{
-        //first character is pid
+            //first character is pid
             if(count == 1){
                 p_id = *itr;
                 itr++;
@@ -50,6 +49,7 @@ int main(int argc, char* argv[]){
                 temp.clear();
                 count++;
             }
+            
             if(count == 3){
                 while(*itr != '|'){
                     temp.push_back(*itr);
@@ -70,19 +70,24 @@ int main(int argc, char* argv[]){
                 temp.clear();
                 count++;
             }
+            
             if(count == 5){
-                while(*itr != '|'){
+                while(itr != line.end()){
                     temp.push_back(*itr);
                     itr++;
                 }
-                itr++;//skip the pipe char
                 iot = std::atoi(temp.c_str());
-                temp.clear();
-                count++;
             }
+            
             p.push_back(Process(p_id, iat, cbt, nb, iot));
         }
     }
+}
+int main(int argc, char* argv[]){
+    std::vector<Process> p;
+    std::string input_file = argv[1];
+    std::ifstream input(input_file);
+    read_p(p, input);
     //done reading/creating processes
     //print processes (testing purpose)
     for(int a = 0; a < p.size(); a++){
