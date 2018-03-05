@@ -161,13 +161,18 @@ void round_robin(std::vector<Process> p){
                 queue.push_back(cs_out[0]);
             }
             cs_out.erase(cs_out.begin());
-            
         }
         //second half begins
         if(cs_cd == 5){
-            printf("%dms : process %c begins entering cpu (enters context switch)\n", time, queue[0].p_id());
-            cs_in.push_back(queue[0]);
-            queue.erase(queue.begin());
+            if(queue.size() == 0){
+                cs_cd = 0;
+                c_swing = false;
+            }
+            else{
+                printf("%dms : process %c begins entering cpu (enters context switch)\n", time, queue[0].p_id());
+                cs_in.push_back(queue[0]);
+                queue.erase(queue.begin());
+            }
         }
         //check if context switch is done, if yes,
         //change context switch status and reset countdown
