@@ -99,7 +99,7 @@ void round_robin(std::vector<Process> p){
     Process cpu; //the process using the cpu
     std::vector<Process> blocked;
     bool b_finish = 0;
-    int process_count = p.size();
+    unsigned int process_count = p.size();
     //int cb_count = 0; //cpu burst count
     //int preemp = 0;
     //int c_sw = 0; //count of context switch
@@ -115,8 +115,9 @@ void round_robin(std::vector<Process> p){
     bool force_quit = false;
     //(while there are unprocessed processes)
     while(finished.size() != process_count){
+	if(time == 200){break;}
         //check if process(es) arrive
-        for (int a = 0; a < p.size(); a++){
+        for (unsigned int a = 0; a < p.size(); a++){
             if(p[a].arrival_t() == time){
                 //add process to queue
                 printf("%dms : added process %c to queue\n", time, p[a].p_id());
@@ -163,9 +164,10 @@ void round_robin(std::vector<Process> p){
         //if cpu is not in use and context switch not taking place
         else if(!cpu_in_use && !c_swing){
             printf("%dms : process %c starts cpu burst\n", time, cs_in[0].p_id());
+	    b_finish = false;
             cpu_in_use = true;
             cpu = cs_in[0];
-            queue.erase(cs_in.begin());
+            cs_in.erase(cs_in.begin());
             //what else to do...?
         }
         //if timeout
@@ -199,7 +201,7 @@ void round_robin(std::vector<Process> p){
         }
         //io time
         if(blocked.size() != 0){
-            for(int a = 0; a < blocked.size(); a++){
+            for(unsigned int a = 0; a < blocked.size(); a++){
                 //do io
                 blocked[a].io_();
                 //remove any process that has done its io from the blocked list
@@ -220,7 +222,7 @@ void round_robin(std::vector<Process> p){
         }
         //add wait time of all processes in queue by 1
         if(time != -1){
-            for(int a = 0; a < queue.size(); a++){
+            for(unsigned int a = 0; a < queue.size(); a++){
                 queue[a].wait_();
             }
         }
@@ -232,12 +234,12 @@ void round_robin(std::vector<Process> p){
 
 int main(int argc, char* argv[]){
     std::vector<Process> p;
-    std::string input_file = argv[1];
-    std::ifstream input(input_file);
+    //std::string input_file = argv[1];
+    std::ifstream input(argv[1]);
     read_p(p, input);
     //done reading/creating processes
     //print processes (testing purpose)
-    for(int a = 0; a < p.size(); a++){
+    for(unsigned int a = 0; a < p.size(); a++){
         p[a].Printp();
     }
     //algorithms
