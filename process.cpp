@@ -19,7 +19,7 @@ private:
     int io_remain;
     int cs_remain;
     bool io_ing;
-    //bool done;
+    bool b_done;
     /*
     int remaining_bursts;
     int remaining_burst_time;
@@ -38,6 +38,7 @@ public:
         cs_remain = 0;
         wait_time = 0;
         io_ing = false;
+        b_done = false;
         //done = false;
     }
     Process(){
@@ -94,6 +95,15 @@ public:
     char p_id(){
         return process_id;
     }
+    bool check_b_done(){
+        if(b_done){
+            b_done = false;
+            return true;
+        }
+        else{
+            return false;
+        }
+    }
     //run cpu burst for the time given (a)
     //hopefully a would be 1
     //return t if a burst is completed
@@ -104,6 +114,7 @@ public:
         if(cbt_remain <= a){
             num_bursts -= 1;
             cbt_remain = cpu_burtst_time;
+            b_done = true;
             return true;
         }
         else{

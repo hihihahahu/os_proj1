@@ -114,6 +114,7 @@ void round_robin(std::vector<Process> p){
     bool c_swing = true; //cw status
     bool force_quit = false;
     bool wait = false;
+    bool penalty = false;
     //bool all_finish = false;
     //(while there are unprocessed processes)
     while(finished.size() != process_count){
@@ -145,8 +146,15 @@ void round_robin(std::vector<Process> p){
                 cs_cd = 0;
                 //c_swing = false;
             }
-            printf("%dms : process %c enters blocked state\n", time, cs_out[0].p_id());
-            blocked.push_back(cs_out[0]);
+            //enter block state if process completed its current burst
+            if(cs_out[0].check_b_done()){
+                printf("%dms : process %c enters blocked state\n", time, cs_out[0].p_id());
+                blocked.push_back(cs_out[0]);
+            }
+            //or goes back to queue
+            else{
+                queue.push_back(cs_out[0]);
+            }
             cs_out.erase(cs_out.begin());
             
         }
@@ -214,6 +222,7 @@ void round_robin(std::vector<Process> p){
             }
             force_quit = false;
             time -= 1;
+            penalty = true;
         }
         //if context switch is taking place
         if(c_swing){
@@ -226,13 +235,13 @@ void round_robin(std::vector<Process> p){
                 //remove any process that has done its io from the blocked list
                 if(blocked[a].io_done()){
                     if(blocked[a].check_done()){
-                        printf("%dms: process %c finished\n", time, blocked[a].p_id());
+                        printf("%dms : process %c finished\n", time, blocked[a].p_id());
                         //if this process is completely done
                         finished.push_back(blocked[a]);
                         blocked.erase(blocked.begin() + a);
                     }
                     else{
-                        printf("%dms: process %c pushed back to queue\n", time, blocked[a].p_id());
+                        printf("%dms : process %c pushed back to queue\n", time, blocked[a].p_id());
                         //else push back to queue
                         queue.push_back(blocked[a]);
                         blocked.erase(blocked.begin() + a);
@@ -240,9 +249,10 @@ void round_robin(std::vector<Process> p){
                     a--;
                 }
                 //do io
-                if(blocked.size() != 0){
+                if(blocked.size() != 0 && !penalty){
                     blocked[a].io_();
                 }
+                penalty = false;
             }
         }
         //add wait time of all processes in queue by 1
@@ -253,7 +263,7 @@ void round_robin(std::vector<Process> p){
         }
         time += 1;
     }
-    printf("%dms: simulator ended\n", time);
+    printf("%dms : simulator ended\n", time);
 }
 
 //looks like processes are sorted by arrival time and process id - great!
