@@ -16,8 +16,9 @@
 bool halt = false;
 //global for rr that controls the process of putting processes into the cpu
 //(waits 1ms - process doesn't start using cpu as it finishes context switch)
-bool wait = false;
-
+bool wait_ = false;
+int time_ = 0;
+bool p_end = false;
 void read_p(std::vector<Process> &p, std::ifstream &input){
     std::string line;
     char p_id;
@@ -96,7 +97,7 @@ void read_p(std::vector<Process> &p, std::ifstream &input){
  #context swtices
  #preemtions
 */
-void process_io(std::vector<Process> &blocked, std::vector<Process> &finished
+void process_io(std::vector<Process> &blocked, std::vector<Process> &finished,
                 std::vector<Process> &queue){
     //if there is process waiting for io check
     if(blocked.size() != 0){
@@ -115,13 +116,13 @@ void process_io(std::vector<Process> &blocked, std::vector<Process> &finished
                 //check if this process terminates
                 if(blocked[a].check_done()){
                     //if terminates, remove from blocked list and move to finished list
-                    printf("%dms : process %c terminated\n", time, blocked[a].p_id());
+                    printf("%dms : process %c terminated\n", time_, blocked[a].p_id());
                     finished.push_back(blocked[a]);
                     blocked.erase(blocked.begin() + a);
                 }
                 else{
                     //otherwise put it back to ready queue
-                    printf("%dms : process %c pushed back to queue\n", time, blocked[a].p_id());
+                    printf("%dms : process %c pushed back to queue\n", time_, blocked[a].p_id());
                     queue.push_back(blocked[a]);
                     blocked.erase(blocked.begin() + a);
                 }
@@ -133,9 +134,9 @@ void process_io(std::vector<Process> &blocked, std::vector<Process> &finished
 }
 void check_arrival(std::vector<Process> &p, std::vector<Process> &queue){
     for (unsigned int a = 0; a < p.size(); a++){
-        if(p[a].arrival_t() == time){
+        if(p[a].arrival_t() == time_){
             //add process to queue
-            printf("%dms : added process %c to queue\n", time, p[a].p_id());
+            printf("%dms : added process %c to queue\n", time_, p[a].p_id());
             queue.push_back(p[a]);
             p.erase(p.begin()+a);
             //minus one because size of p decrease by 1
@@ -144,8 +145,9 @@ void check_arrival(std::vector<Process> &p, std::vector<Process> &queue){
     }
 }
 //process moving out of cpu
+//loading process from queue
 void cs_first_half(std::vector<Process> &cs_out, int &cs_cd,
-                   std::vector<Process> &blocked){
+                   std::vector<Process> &blocked, std::vector<Process> &queue){
     //if ready queue is empty, cs can actually be skipped
     if(queue.size() == 0){
         //skip cs
@@ -155,13 +157,15 @@ void cs_first_half(std::vector<Process> &cs_out, int &cs_cd,
     //check if the process has done its burst
     if(cs_out[0].check_b_done()){
         //if burst done, enters block state and process io later
-        printf("%dms : process %c enters blocked state\n", time, cs_out[0].p_id());
+        cs_out[0].cs_switch();
+        printf("%dms : process %c enters blocked state (first half of context switch ended)\n", time_, cs_out[0].p_id());
         blocked.push_back(cs_out[0]);
         halt = true;
     }
     //or it goes back to the queue
     else{
         if(cs_out.size() != 0){
+            cs_out[0].cs_switch();
             queue.push_back(cs_out[0]);
         }
     }
@@ -171,6 +175,7 @@ void cs_first_half(std::vector<Process> &cs_out, int &cs_cd,
     }
 }
 //process moving into cpu
+//saving process to queue
 void cs_second_half(std::vector<Process> &cs_in, Process &cpu, std::vector<Process> &queue,
                     int &cs_cd, bool &c_swing){
     //if there are no processes waiting for context switch
@@ -181,22 +186,23 @@ void cs_second_half(std::vector<Process> &cs_in, Process &cpu, std::vector<Proce
     }
     //or put the next process on queue into context switch
     else{
-        printf("%dms : process %c begins entering cpu (enters context switch)\n", time, queue[0].p_id());
+        printf("%dms : process %c begins entering cpu (enters second half of context switch)\n", time_, queue[0].p_id());
         //turn cs on
         queue[0].cs_switch();
         cs_in.push_back(queue[0]);
         queue.erase(queue.begin());
     }
 }
-void check_cs_complete(int &cs_cd, int &t_cs, bool &c_swing, bool &wait){
+void check_cs_complete(int &cs_cd, int &t_cs, bool &c_swing, bool &wait_){
     if(cs_cd == t_cs - 1){
-        printf("%dms : context switch done\n", time);
+        printf("%dms : (second half of) context switch done\n", time_);
         cs_cd = 0;
         c_swing = false;
         //the process moving into the cpu needs to wait 1ms upon cs completion to start using cpu
-        wait = true;
+        wait_ = true;
     }
 }
+//check if the process in cs_out actually terminates (i.e. no io needed, and report terminate before it enters cs)
 void round_robin(std::vector<Process> p){
     std::vector<Process> p_s = p;
     std::vector<Process> queue;
@@ -212,35 +218,41 @@ void round_robin(std::vector<Process> p){
     //int c_sw = 0; //count of context switch
     int t_slice = 80;
     int t_cs = 8;
-    int time = 0; //time
-    int cs_cd = (t_cs/2); //context switch countdown
+    time_ = 0; //time
+    int cs_cd = 0; //context switch countdown
     int cb_remain = t_slice;
     //default is this because first process takes t_cs/2 ms to get
     //to cpu
     bool cpu_in_use = false;
     bool c_swing = true; //cw status
     bool force_quit = false;
-    bool wait = false;
+    wait_ = false;
     //bool penalty = false;
     halt = false;
     //bool compensate = true;
     //bool all_finish = false;
     //(while there are unprocessed processes)
     while(finished.size() != process_count){
+        check_terminate();
         check_arrival(p, queue);
         //now newly arrived process(es) are added to queue (if any)
         //check if first half of cs is done
         if(cs_cd == 3){
-            cs_first_half(cs_out, cs_cd, blocked);
+            cs_first_half(cs_out, cs_cd, blocked, queue);
         }
         //printf("size of queue %lu\n", queue.size());
+        //force start second half of cs if a process is waiting to enter cpu,
+        //and there is no process being loaded
+        if(!cpu_in_use && (queue.size() != 0) && (cs_in.size() == 0) && (cs_out.size() == 0)){
+            cs_cd = 4;
+        }
         //second half begins
         if(cs_cd == 4){
             cs_second_half(cs_in, cpu, queue, cs_cd, c_swing);
         }
         //check if context switch is done, if yes,
         //change context switch status and reset countdown
-        check_cs_complete(cs_cd, t_cs, c_swing, wait);
+        check_cs_complete(cs_cd, t_cs, c_swing, wait_);
         //wait one more ms before the process actually starts using cpu
         
         //check if cpu is in use first
@@ -250,29 +262,32 @@ void round_robin(std::vector<Process> p){
             b_finish = cpu.run_cpu_burst(1);
         }
         //if cpu is not in use and context switch not taking place
-        else if(!cpu_in_use && !c_swing && !wait){
+        else if(!cpu_in_use && !c_swing && !wait_ && (cs_in.size() != 0)){
             cb_remain -= 1;
-            printf("%dms : process %c starts cpu burst\n", time, cs_in[0].p_id());
+            printf("%dms : process %c starts cpu burst\n", time_, cs_in[0].p_id());
             cpu_in_use = true;
             cpu = cs_in[0];
             b_finish = cpu.run_cpu_burst(1);
             cs_in.erase(cs_in.begin());
             //what else to do...?
         }
-        wait = false;
+        wait_ = false;
         //if timeout
         if(cb_remain == 0){
             //force finish
-            printf("%dms : process %c finishes cpu burst due to timeout\n", time, cpu.p_id());
+            printf("%dms : process %c finishes cpu burst due to timeout\n", time_, cpu.p_id());
             force_quit = true;
             //cb_remain = t_slice;
             b_finish = true;
         }
         //if a process has done cpu bursting...?
         if(cpu_in_use && b_finish){
+            //reset the flag
+            b_finish = false;
+            //reset time slice countdown;
             cb_remain = t_slice;
             if(!force_quit){
-                printf("%dms : process %c finished cpu burst normally\n", time, cpu.p_id());
+                printf("%dms : process %c finished cpu burst normally\n", time_, cpu.p_id());
             }
             //if time slice expires and no process waiting to enter cpu,
             //no context switch and the process remains where it was
@@ -283,30 +298,39 @@ void round_robin(std::vector<Process> p){
             }
             //if there is another process waiting, this process should be moved out
             //(or if the process ends normally)
+            //!!!
+            
+            //process should go to blocked for io check first before entering cs
+            
+            //!!!
             else{
-                cs_out.push_back(cpu);
+                cpu.cs_switch();
+                blocked.push_back(cpu);
                 //context switch begin
-                c_swing = true;
+                //c_swing = true;
                 cpu_in_use = false;
+                p_end = true;
+                cs_cd = -1;
             }
             //reset the flag
             force_quit = false;
         }
         //if context switch is taking place
-        if(c_swing){
+        if(c_swing && !p_end){
             cs_cd += 1;
         }
+        p_end = false;
         //io time
         process_io(blocked, finished, queue);
-        //add wait time of all processes in queue by 1
-        if(time != -1){
+        //add wait time of all processes in ready queue by 1
+        if(time_ != -1){
             for(unsigned int a = 0; a < queue.size(); a++){
                 queue[a].wait_();
             }
         }
-        time += 1;
+        time_ += 1;
     }
-    printf("%dms : simulator ended\n", time);
+    printf("%dms : simulator ended\n", time_);
 }
 
 //looks like processes are sorted by arrival time and process id - great!
