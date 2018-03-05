@@ -1,0 +1,215 @@
+#include "Process.h"
+#include <iostream>
+#include <fstream>
+#include <string>
+#include <cstdlib>
+#include <vector>
+#include <fstream>
+#include <list>
+
+using namespace std;
+
+vector<Process> notReadyQueue;
+list<Process> cpu; 
+list<Process> ready_queue;
+list<Process> wait_queue;
+
+int systemTime = 0;
+int switchTime = 4;
+
+void print_ready_queue() {
+    list<Process>::iterator itr_rq = ready_queue.begin();
+    cout << "[Q ";
+    while(itr_rq != ready_queue.end()) {
+        cout << itr_rq->pid;
+        itr_rq ++;
+        if (itr_rq != ready_queue.end()) cout << " ";
+        else cout << "] " << endl;
+    }
+    if(ready_queue.size() == 0) {
+        cout << "<empty>]" <<endl;
+    }
+}
+
+
+
+void read_p(ifstream &input){
+    string line;
+    char p_id;
+    int iat; //initial arrival time
+    int cbt; //cpu burst time
+    int nb; //num of bursts
+    int iot; //io time
+    //read and create and push back processes
+    while(getline(input, line)){
+        string::iterator itr;
+        string temp ="";
+        int count = 1;
+        itr = line.begin();
+        if(*itr == '#'){
+        }
+        
+        else{
+            //first character is pid
+            if(count == 1){
+                p_id = *itr;
+                itr++;
+                itr++;//skip the pipe char
+                count++;
+            }
+            if(count == 2){
+                while(*itr != '|'){
+                    temp.push_back(*itr);
+                    itr++;
+                }
+                itr++;//skip the pipe char
+                iat = std::atoi(temp.c_str());
+                temp.clear();
+                count++;
+            }
+            
+            if(count == 3){
+                while(*itr != '|'){
+                    temp.push_back(*itr);
+                    itr++;
+                }
+                itr++;//skip the pipe char
+                cbt = std::atoi(temp.c_str());
+                temp.clear();
+                count++;
+            }
+            if(count == 4){
+                while(*itr != '|'){
+                    temp.push_back(*itr);
+                    itr++;
+                }
+                itr++;//skip the pipe char
+                nb = std::atoi(temp.c_str());
+                temp.clear();
+                count++;
+            }
+            
+            if(count == 5){
+                while(itr != line.end()){
+                    temp.push_back(*itr);
+                    itr++;
+                }
+                iot = std::atoi(temp.c_str());
+            }
+            
+            notReadyQueue.push_back(Process(p_id, iat, cbt, nb, iot, switchTime));
+        }
+    }
+}
+
+void checkArrival() {
+    for(int i=0;i<notReadyQueue.size();i++) {
+        if(notReadyQueue[i].arrivalTime == systemTime) {               
+            ready_queue.push_back(notReadyQueue[i]);
+            //very annoying output requirements
+            cout << "time " << systemTime << "ms: " << "process " << notReadyQueue[i].pid << " arrived and added to ready queue ";
+            print_ready_queue();
+            //print_wait_queue();
+            notReadyQueue.erase(notReadyQueue.begin()+i);
+            i--;
+        }
+    }   
+}
+
+void checkIO() {
+    if(wait_queue.size() != 0) {
+        list<Process>::iterator itr_wq = wait_queue.begin();
+        while(itr_wq != wait_queue.end()) {
+            if(itr_wq->IOTime == 0) {
+                cout << "time " << systemTime << "ms: " << "process " << itr_wq->pid << " completed I/O; added to ready queue ";
+                itr_wq->st = switchTime-1;
+                itr_wq->IOTime = itr_wq->initIOTime;
+                itr_wq->remainBurstTime = itr_wq->initBurstTime-1;
+                ready_queue.push_back(*itr_wq);
+                itr_wq = wait_queue.erase(itr_wq);
+                //very annoying output requirements
+                print_ready_queue();
+                //print_wait_queue();
+            }    
+            else {
+                itr_wq->IOTime--;
+                itr_wq++;
+            }
+        } 
+    }
+}
+
+void fcfs() {
+        
+    cout << "time " << systemTime << "ms: Simulator started for FCFS [Q <empty>] " << endl;
+    while (notReadyQueue.size() != 0 or cpu.size() != 0 or ready_queue.size() != 0 or wait_queue.size() != 0) {
+        //putting process in the ready queue from notReadyQueue
+        checkArrival(); 
+        //putting process in the cpu from the ready queue when nothing is in the cpu
+        if(cpu.size() == 0 and ready_queue.size() != 0) {   
+            list<Process>::iterator itr_rq = ready_queue.begin();
+            if(itr_rq->st == 0) {
+                cout << "time " << systemTime << "ms: " << "process " << itr_rq->pid << " started using the CPU ";                
+                itr_rq->st = switchTime;
+                cpu.push_back(*itr_rq);
+                ready_queue.pop_front();
+                //very annoying output requirements
+                print_ready_queue();
+               
+            }
+            else itr_rq->st--;
+        }
+        //cases where one process is in the CPU, one process is running.
+        else if(cpu.size() != 0) {
+            list<Process>::iterator itr_rq = ready_queue.begin();
+            list<Process>::iterator itr_cpu = cpu.begin();
+            if (itr_cpu->remainBurstTime == 0 and itr_cpu->remainNumBurst == 1) {   //end of process
+                if (ready_queue.size()!=0) itr_rq->st = switchTime;
+                if(itr_cpu->st != 0) {
+                    itr_cpu->st--;
+                }
+                else {
+                    cout << "time " << systemTime-4 << "ms: " << "process " << itr_cpu->pid << " terminated ";
+                    cpu.pop_back();
+                    if (ready_queue.size() != 0) itr_rq->st--;
+                    //very annoying output requirements
+                    print_ready_queue();
+                }    
+            }    
+            else if(itr_cpu->remainBurstTime == 0 and itr_cpu->st == 0 and itr_cpu->remainNumBurst != 1) { //blocked
+             
+                if (ready_queue.size() != 0) {
+                    itr_rq->st = switchTime;
+                    itr_rq->st--;
+                }
+                itr_cpu->remainBurstTime = itr_cpu->initBurstTime-1;
+                itr_cpu->remainNumBurst--;
+                //very annoying output requirements
+                cout << "time " << systemTime-4 << "ms: " << "process " << itr_cpu->pid << " completed a CPU burst; " << itr_cpu->remainNumBurst << " bursts to go ";
+                print_ready_queue();
+                //very annoying output requirements
+                cout << "time " << systemTime-4 << "ms: " << "process " << itr_cpu->pid << " switching out of CPU; will be blocked on I/O until time " << systemTime+itr_cpu->IOTime << "ms ";
+                print_ready_queue();
+                wait_queue.push_back(*itr_cpu);
+                cpu.pop_back();
+                
+            }
+            else if((itr_cpu->remainBurstTime == 0) and itr_cpu->st != 0) {    //switching out 
+                itr_cpu->st--;
+            }    
+            else {
+                itr_cpu->remainBurstTime--;       // running 1 ms
+            }
+        }
+        //check the blocked queue
+        checkIO();
+        systemTime++;
+    }
+    cout << "time " << systemTime-1 << "ms: Simulator ended for FCFS" << endl << endl;
+}
+
+int main(int argc, char* argv[]){
+    ifstream input("process");
+    read_p(input);
+    fcfs();
+}
