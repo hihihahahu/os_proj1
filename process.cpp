@@ -20,6 +20,7 @@ private:
     int cs_remain;
     bool io_ing;
     bool b_done;
+    bool cs_ing;
     /*
     int remaining_bursts;
     int remaining_burst_time;
@@ -39,6 +40,7 @@ public:
         wait_time = 0;
         io_ing = false;
         b_done = false;
+        cs_ing = false;
         //done = false;
     }
     Process(){
@@ -85,8 +87,11 @@ public:
     void io_(){
         io_remain -= 1;
     }
+    void cs_switch(){
+        cs_ing = !cs_ing;
+    }
     bool io_done(){
-        if(io_remain == 0){
+        if(io_remain <= 0){
             io_remain = io_time;
             return true;
         }
