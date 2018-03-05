@@ -213,7 +213,7 @@ void round_robin(std::vector<Process> p){
                 cpu_in_use = false;
             }
             force_quit = false;
-            
+            time -= 1;
         }
         //if context switch is taking place
         if(c_swing){
@@ -221,7 +221,7 @@ void round_robin(std::vector<Process> p){
         }
         //io time
         if(blocked.size() != 0){
-            printf("checking blocked list\n");
+            //printf("checking blocked list\n");
             for(unsigned int a = 0; a < blocked.size(); a++){
                 //remove any process that has done its io from the blocked list
                 if(blocked[a].io_done()){
