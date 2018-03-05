@@ -7,7 +7,6 @@
 
 //#include "os-p1.h"
 #include <iostream>
-
 class Process{
 private:
     char process_id;
@@ -18,6 +17,7 @@ private:
     int wait_time;
     int cbt_remain;
     int io_remain;
+    int cs_remain;
     bool io_ing;
     //bool done;
     /*
@@ -35,9 +35,13 @@ public:
         io_time = io_t;
         cbt_remain = cpu_burtst_time;
         io_remain = io_time;
+        cs_remain = 0;
         wait_time = 0;
         io_ing = false;
         //done = false;
+    }
+    Process(){
+        
     }
     //test
     void Printp(){
@@ -59,20 +63,33 @@ public:
     int iot(){
         return io_time;
     }
+    int iot_r(){
+        return io_remain;
+    }
     int wait_t(){
         return wait_time;
+    }
+    int get_cs(){
+        return cs_remain;
+    }
+    void set_cs(int a){
+        cs_remain = a;
+    }
+    void cs_(){
+        cs_remain -= 1;
     }
     void wait_(){
         wait_time += 1;
     }
-    void io_start(){
-        io_ing = true;
-    }
-    void io_end(){
-        io_ing  = false;
-    }
     void io_(){
-        io += 1;
+        io_remain -= 1;
+    }
+    bool io_done(){
+        if(io_remain == 0){
+            io_remain = io_time;
+            return true;
+        }
+        return false;
     }
     char p_id(){
         return process_id;
