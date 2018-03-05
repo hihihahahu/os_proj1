@@ -120,7 +120,7 @@ void round_robin(std::vector<Process> p){
     //bool all_finish = false;
     //(while there are unprocessed processes)
     while(finished.size() != process_count){
-        if(time == 1650){break;}
+        //if(time == 1650){break;}
         /*
 	if(time == 300){break;}
          printf("queue: ");
@@ -149,6 +149,7 @@ void round_robin(std::vector<Process> p){
                 cs_cd = 0;
                 //c_swing = false;
             }
+            //printf("?\n");
             //enter block state if process completed its current burst
             if(cs_out[0].check_b_done()){
                 printf("%dms : process %c enters blocked state\n", time, cs_out[0].p_id());
@@ -158,10 +159,16 @@ void round_robin(std::vector<Process> p){
             //or goes back to queue
             else{
                 //compensate = false;
-                queue.push_back(cs_out[0]);
+                if(cs_out.size() != 0){
+                    queue.push_back(cs_out[0]);
+                }
             }
-            cs_out.erase(cs_out.begin());
+            //printf("?\n");
+            if(cs_out.size() != 0){
+                cs_out.erase(cs_out.begin());
+            }
         }
+        //printf("size of queue %lu\n", queue.size());
         //second half begins
         if(cs_cd == 5){
             if(queue.size() == 0){
@@ -191,12 +198,14 @@ void round_robin(std::vector<Process> p){
             cb_remain -= 1;
             b_finish = cpu.run_cpu_burst(1);
         }
+        
         //if cpu is not in use and context switch not taking place
         else if(!cpu_in_use && !c_swing && !wait){
+            cb_remain -= 1;
             printf("%dms : process %c starts cpu burst\n", time, cs_in[0].p_id());
-	        b_finish = false;
             cpu_in_use = true;
             cpu = cs_in[0];
+            b_finish = cpu.run_cpu_burst(1);
             cs_in.erase(cs_in.begin());
             //what else to do...?
         }
@@ -225,7 +234,7 @@ void round_robin(std::vector<Process> p){
             //printf("here1?\n");
             else{
                 cs_out.push_back(cpu);
-                cs_cd += 1;
+                //cs_cd += 1;
                 //context switch begins
                 //printf("here2?\n");
                 c_swing = true;
@@ -241,6 +250,11 @@ void round_robin(std::vector<Process> p){
         if(blocked.size() != 0){
             //printf("checking blocked list\n");
             for(unsigned int a = 0; a < blocked.size(); a++){
+                if(blocked.size() != 0 && !halt){
+                    blocked[a].io_();
+                    //printf("%d %c\n",time, blocked[a].p_id());
+                }
+                halt = false;
                 //remove any process that has done its io from the blocked list
                 if(blocked[a].io_done()){
                     if(blocked[a].check_done()){
@@ -258,11 +272,7 @@ void round_robin(std::vector<Process> p){
                     a--;
                 }
                 //do io
-                else if(blocked.size() != 0 && !halt){
-                    blocked[a].io_();
-                    printf("%d %c\n",time, blocked[a].p_id());
-                }
-                halt = false;
+                
             }
         }
         //add wait time of all processes in queue by 1
