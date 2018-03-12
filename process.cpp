@@ -101,7 +101,7 @@ public:
         return process_id;
     }
     bool check_b_done(){
-        if(b_done && io_remain <= 0){
+        if(b_done){
             b_done = false;
             return true;
         }
