@@ -75,6 +75,9 @@ public:
     int get_cs(){
         return cs_remain;
     }
+    int get_cbt(){
+        return cbt_remain;
+    }
     void set_cs(int a){
         cs_remain = a;
     }
@@ -90,9 +93,27 @@ public:
     void cs_switch(){
         cs_ing = !cs_ing;
     }
+    bool get_b_done(){
+        return b_done;
+    }
     bool io_done(){
         if(io_remain <= 0){
             io_remain = io_time;
+            return true;
+        }
+        return false;
+    }
+    bool check_new_burst(){
+        if(cbt_remain == cpu_burtst_time){
+            return true;
+        }
+        else{
+            return false;
+        }
+    }
+    bool io_done_2(){
+        if(io_remain <= 0){
+            //io_remain = io_time;
             return true;
         }
         return false;
