@@ -14,10 +14,13 @@ private:
     int cpu_burtst_time;
     int num_bursts;
     int io_time;
-    int wait_time;
+    //int wait_time;
     int cbt_remain;
     int io_remain;
     int cs_remain;
+    int wait_time;
+    int turnaround_begin;
+    int turnaround_end;
     bool io_ing;
     bool b_done;
     bool cs_ing;
@@ -38,6 +41,8 @@ public:
         io_remain = io_time;
         cs_remain = 0;
         wait_time = 0;
+        turnaround_begin = a_time;
+        turnaround_end = 0;
         io_ing = false;
         b_done = false;
         cs_ing = false;
@@ -50,6 +55,16 @@ public:
     void Printp(){
         std::cout << process_id <<"|"<< arrival_time << "|" << cpu_burtst_time << "|" << num_bursts
         << "|" << io_time << std::endl;
+    }
+    //
+    void tat_begin(int a){
+        turnaround_begin = a;
+    }
+    void tat_end(int a){
+        turnaround_end = a;
+    }
+    int tat(){
+        return (turnaround_end - turnaround_begin);
     }
     bool check_done(){
         return (num_bursts == 0);
@@ -78,6 +93,9 @@ public:
     int get_cbt(){
         return cbt_remain;
     }
+    int get_wait_time(){
+        return wait_time;
+    }
     void set_cs(int a){
         cs_remain = a;
     }
@@ -85,10 +103,15 @@ public:
         cs_remain -= 1;
     }
     void wait_(){
+        if(!cs_ing){
         wait_time += 1;
+        }
     }
     void io_(){
         io_remain -= 1;
+    }
+    void wait_minus(){
+        wait_time -= 1;
     }
     void cs_switch(){
         cs_ing = !cs_ing;
@@ -130,6 +153,7 @@ public:
             return false;
         }
     }
+    
     //run cpu burst for the time given (a)
     //hopefully a would be 1
     //return t if a burst is completed

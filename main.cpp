@@ -21,12 +21,22 @@ int time_ = 0;
 int t_cs = 8;
 bool p_end = false;
 bool halt_load = false;
+//stats
+int num_cs = 0; //done
+int num_preempt = 0; //done
+float cbt_ = 0; //...done
+float tat = 0; //done
+float wait_time = 0; //done
+float num_process = 0; //done
+float num_bursts = 0; //done
+//
 std::vector<Process> wait_for_io;
 std::vector<Process> wait_to_q;
 std::vector<Process> tie_list;
 std::vector<Process> finished;
 std::vector<Process> d_finished;
 std::vector<Process> queue;
+//std::vector<int> tats;
 Process preempted;
 Process burst_complete;
 //show preempt message
@@ -100,6 +110,9 @@ void read_p(std::vector<Process> &p, std::ifstream &input){
             }
             
             p.push_back(Process(p_id, iat, cbt, nb, iot));
+            cbt_ += cbt * nb;
+            num_bursts += nb;
+            num_process += 1;
         }
     }
 }
@@ -188,6 +201,7 @@ void cs_first_half(std::vector<Process> &cs_out, int &cs_cd,
     //check if the process has done its burst
     if(cs_out[0].check_b_done() && cs_out.size() != 0){
         //if burst done, enters block state and process io later
+        num_cs += 1;
         cs_out[0].cs_switch();
         if(!cs_out[0].io_done()){
             //printf("%dms : process %c enters blocked state (first half of context switch ended)", time_, cs_out[0].p_id());
@@ -218,7 +232,18 @@ void cs_first_half(std::vector<Process> &cs_out, int &cs_cd,
                 //printf("%dms : process %c returns to ready queue", time_, cs_out[0].p_id());
                 cs_out[0].cs_switch();
                 //queue.push_back(cs_out[0]);
+                //this is actually a hard-coding fix
+                //cs_out[0] doesn't enter the ready queue at this timeslice
+                //it enters at next time slice
+                //but to avoid that 1ms extra wait time
+                //wait_minus is executed to get the correct wait time
+                cs_out[0].wait_minus();
+                if(cs_out[0].get_cbt() == cs_out[0].cbt()){
+                    cs_out[0].tat_begin(time_ + 1);
+                    printf("begin set at time %d (process %c) (no I/O)\n", time_,cs_out[0].p_id());
+                }
                 queue.push_back(cs_out[0]);
+                num_cs += 1;
                 //print_queue(queue);
             //}
         }
@@ -249,8 +274,10 @@ void cs_second_half(std::vector<Process> &cs_in, Process &cpu, std::vector<Proce
         
         //turn cs on
         queue[0].cs_switch();
+        //queue[0].wait_minus();
         cs_in.push_back(queue[0]);
         queue.erase(queue.begin());
+        num_cs += 1;
         //print_queue(queue);
     }
 }
@@ -282,6 +309,7 @@ void tie_breaker(std::vector<Process> &queue){
 void preempt_message(){
     if(queue.size() != 0){
         std::cout << "time " << time_ << "ms: Time slice expired; process " << preempted.p_id() << " preempted with " << preempted.get_cbt() << "ms to go ";
+        num_preempt += 1;
     }
     else{
         std::cout << "time " << time_ << "ms: Time slice expired; no preemption because ready queue is empty ";
@@ -296,6 +324,10 @@ void burst_complete_message(){
         std::cout << "time " << time_ << "ms: Process " << burst_complete.p_id() << " completed a CPU burst; " << burst_complete.num_b() << " burst to go ";
     }
     print_queue(queue);
+    burst_complete.tat_end(time_ + t_cs/2);
+    printf("Process %c tat end at %d\n", burst_complete.p_id(), time_ + t_cs/2);
+    tat += (burst_complete.tat());
+     printf("%d\n", burst_complete.tat());
     if(burst_complete.iot() != 0){
         std::cout << "time " << time_ << "ms: Process " << burst_complete.p_id() << " switching out of CPU; will block on I/O until time " << time_ + burst_complete.iot() + t_cs/2 << "ms ";
         print_queue(queue);
@@ -327,6 +359,13 @@ void round_robin(std::vector<Process> p){
     std::cout << "time " << time_ << "ms: Simulator started for RR ";
     print_queue(queue);
     while(finished.size() != process_count){
+        //increment wait time
+        if(queue.size() != 0){
+            for(unsigned int a = 0; a < queue.size(); a++){
+                queue[a].wait_();
+            //wait_time += 1;
+            }
+        }
         if(p_message){
             p_message = false;
             preempt_message();
@@ -339,6 +378,10 @@ void round_robin(std::vector<Process> p){
             //printf("%dms : process %c terminated\n", time_, d_finished[0].p_id());
             std::cout << "time " << time_ << "ms: Process " << d_finished[0].p_id() << " terminated ";
             print_queue(queue);
+            d_finished[0].tat_end(time_ + t_cs/2);
+            tat += (d_finished[0].tat());
+            printf("Process %c tat end at %d\n", d_finished[0].p_id(), time_ + t_cs/2);
+            printf("%d\n", d_finished[0].tat());
             d_finished.erase(d_finished.begin());
         }
         if(wait_for_io.size() != 0){
@@ -353,7 +396,14 @@ void round_robin(std::vector<Process> p){
         //check_terminate();
         
         if(wait_to_q.size() != 0){
+            //wait_to_q[0].tat_begin(time_);
+            printf("yo\n");
+            if(wait_to_q[0].get_cbt() == wait_to_q[0].cbt()){
+                wait_to_q[0].tat_begin(time_);
+                printf("begin set at time %d (process %c)\n", time_,wait_to_q[0].p_id());
+            }
             queue.push_back(wait_to_q[0]);
+            
             //tie_list.push_back(wait_to_q[0]);
             //printf("%dms : process %c pushed back to ready queue from blocked list", time_, wait_to_q[0].p_id());
             std::cout << "time " << time_ << "ms: Process " << wait_to_q[0].p_id() << " completed I/O; added to ready queue ";
@@ -400,13 +450,16 @@ void round_robin(std::vector<Process> p){
             cb_remain -= 1;
             if(cs_in[0].check_new_burst()){
                 std::cout << "time " << time_ << "ms: Process " << cs_in[0].p_id() << " started using the CPU ";
+                //cs_in[0].tat_begin(time_ - t_cs/2);
             }
             else{
                 std::cout << "time " << time_ << "ms: Process " << cs_in[0].p_id() << " started using the CPU with " << cs_in[0].get_cbt() << "ms remaining ";
+                //cs_in[0].tat_begin(time_ - t_cs/2);
             }
             print_queue(queue);
             cpu_in_use = true;
             cpu = cs_in[0];
+            cpu.cs_switch();
             b_finish = cpu.run_cpu_burst(1);
             cs_in.erase(cs_in.begin());
             //what else to do...?
@@ -450,15 +503,17 @@ void round_robin(std::vector<Process> p){
             //necessarily?
             
             //!!!
+            //preempted
             else{
                 cpu.cs_switch();
                 cs_out.push_back(cpu);
+                //if the process has actually terminated
                 if(cpu.check_done()){
                     //it will be declared terminated at next time slice
                     //though cs is still taking place
                     d_finished.push_back(cpu);
                 }
-                //context switch begin (no)
+                
                 //c_swing = true;
                 cpu_in_use = false;
                 p_end = true;
@@ -475,16 +530,31 @@ void round_robin(std::vector<Process> p){
         //io time
         
         //add wait time of all processes in ready queue by 1
+        /*
         if(time_ != -1){
             for(unsigned int a = 0; a < queue.size(); a++){
                 queue[a].wait_();
             }
         }
+         */
         //printf("%d\n", time_);
         time_ += 1;
     }
     //printf("%dms : simulator ended\n", time_);
     std::cout << "time " << time_ << "ms: Simulator ended for RR" << std::endl;
+    
+    std::cout << "-- avg cpu burst time: " << (float)cbt_/(float)num_bursts << "ms" << std::endl;
+    //find total wait time
+    
+    for(unsigned int a = 0; a < finished.size(); a++){
+        wait_time += finished[a].get_wait_time();
+        //printf("wait time for process %c is %d\n", finished[a].p_id(), finished[a].get_wait_time() - 1);
+    }
+    
+    std::cout << "-- avg wait time: " << (float)(wait_time)/(float)(num_bursts) << "ms" << std::endl;
+    std::cout << "avg turnaround time: " << (float)(tat)/(float)(num_bursts) << "ms" << std::endl;
+    std::cout << "total number of cs: " << num_cs/2 << std::endl;
+    std::cout << "total number of preemptions: " << num_preempt << std::endl;
 }
 
 //looks like processes are sorted by arrival time and process id - great!
