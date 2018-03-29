@@ -21,6 +21,8 @@ int time_ = 0;
 int t_cs = 8;
 bool p_end = false;
 bool halt_load = false;
+bool rr_add_end = true;
+bool rr_sim_begin = true;
 //stats
 int num_cs = 0; //done
 int num_preempt = 0; //done
@@ -210,6 +212,7 @@ void cs_first_half(std::vector<Process> &cs_out, int &cs_cd,
                 finished.push_back(cs_out[0]);
             }
             else{
+                rr_sim_begin = true;
                 wait_for_io.push_back(cs_out[0]);
                 halt = true;
             }
@@ -238,12 +241,20 @@ void cs_first_half(std::vector<Process> &cs_out, int &cs_cd,
                 //but to avoid that 1ms extra wait time
                 //wait_minus is executed to get the correct wait time
                 cs_out[0].wait_minus();
+               //check if the process has completed its own cpu burst
                 if(cs_out[0].get_cbt() == cs_out[0].cbt()){
                     cs_out[0].tat_begin(time_ + 1);
-                    printf("begin set at time %d (process %c) (no I/O)\n", time_,cs_out[0].p_id());
+                    //printf("begin set at time %d (process %c) (no I/O)\n", time_,cs_out[0].p_id());
                 }
+            
+            if(rr_add_end || cs_out[0].get_cbt() != cs_out[0].cbt()){
+                rr_sim_begin = true;
                 queue.push_back(cs_out[0]);
-                num_cs += 1;
+            }
+            else{
+                queue.insert(queue.begin(), cs_out[0]);
+            }
+            num_cs += 1;
                 //print_queue(queue);
             //}
         }
@@ -273,10 +284,27 @@ void cs_second_half(std::vector<Process> &cs_in, Process &cpu, std::vector<Proce
         //printf("%dms : process %c begins entering cpu (enters second half of context switch)", time_, queue[0].p_id());
         
         //turn cs on
-        queue[0].cs_switch();
+        if(rr_add_end || queue.size() == 1){
+            queue[0].cs_switch();
         //queue[0].wait_minus();
-        cs_in.push_back(queue[0]);
-        queue.erase(queue.begin());
+            cs_in.push_back(queue[0]);
+            queue.erase(queue.begin());
+        }
+        else{
+            if(!rr_sim_begin){
+                queue[1].cs_switch();
+                //queue[0].wait_minus();
+                cs_in.push_back(queue[1]);
+                queue.erase(queue.begin()+1);
+            }
+            else{
+                queue[0].cs_switch();
+                //queue[0].wait_minus();
+                cs_in.push_back(queue[0]);
+                queue.erase(queue.begin());
+                rr_sim_begin = false;
+            }
+        }
         num_cs += 1;
         //print_queue(queue);
     }
@@ -300,7 +328,12 @@ void tie_breaker(std::vector<Process> &queue){
                 key = a;
             }
         }
-        queue.push_back(tie_list[key]);
+        if(rr_add_end || queue.size() == 0){
+            queue.push_back(tie_list[key]);
+        }
+        else{
+            queue.insert(queue.begin(), tie_list[key]);
+        }
         std::cout << "time " << time_ << "ms: Process " << tie_list[key].p_id() << " arrived and added to ready queue ";
         print_queue(queue);
         tie_list.erase(tie_list.begin() + key);
@@ -381,7 +414,7 @@ void round_robin(std::vector<Process> p){
             d_finished[0].tat_end(time_ + t_cs/2);
             tat += (d_finished[0].tat());
             printf("Process %c tat end at %d\n", d_finished[0].p_id(), time_ + t_cs/2);
-            printf("%d\n", d_finished[0].tat());
+            //printf("%d\n", d_finished[0].tat());
             d_finished.erase(d_finished.begin());
         }
         if(wait_for_io.size() != 0){
@@ -397,12 +430,18 @@ void round_robin(std::vector<Process> p){
         
         if(wait_to_q.size() != 0){
             //wait_to_q[0].tat_begin(time_);
-            printf("yo\n");
+            //printf("yo\n");
             if(wait_to_q[0].get_cbt() == wait_to_q[0].cbt()){
                 wait_to_q[0].tat_begin(time_);
                 printf("begin set at time %d (process %c)\n", time_,wait_to_q[0].p_id());
             }
-            queue.push_back(wait_to_q[0]);
+            if(rr_add_end || queue.size() == 0){
+                queue.push_back(wait_to_q[0]);
+            }
+            else{
+                queue.insert(queue.begin(), wait_to_q[0]);
+            }
+            
             
             //tie_list.push_back(wait_to_q[0]);
             //printf("%dms : process %c pushed back to ready queue from blocked list", time_, wait_to_q[0].p_id());
@@ -564,6 +603,15 @@ int main(int argc, char* argv[]){
     //std::string input_file = argv[1];
     std::ifstream input(argv[1]);
     read_p(p, input);
+    if(argc == 3){
+        std::string arg(argv[2]);
+        if(arg.compare("END") == 0){
+            rr_add_end = true;
+        }
+        else if(arg.compare("BEGINNING") == 0){
+            rr_add_end = false;
+        }
+    }
     //done reading/creating processes
     //print processes (testing purpose)
     /*
