@@ -1,0 +1,285 @@
+#include "Process.h"
+#include <iostream>
+#include <fstream>
+#include <string>
+#include <cstdlib>
+#include <vector>
+#include <fstream>
+#include <list>
+#include <iomanip>
+
+using namespace std;
+
+//Global Variables
+vector<Process> notReadyQueue;
+list<Process> cpu; 
+list<Process> ready_queue;
+list<Process> wait_queue;
+
+int num_processes;
+int total_cpu_burst_time = 0;
+int total_wait_time = 0;
+int total_context_switches = 0;
+int total_preemptions = 0;
+int total_bursts = 0;
+
+int switchTime = 4; //later changing to argv[3]
+int timeslice = 80; //later changing to argv[4]
+
+int systemTime = 0;
+
+//Utility function
+void readFile(ifstream &input){
+    string line;
+    char p_id;
+    int iat; //initial arrival time
+    int cbt; //cpu burst time
+    int nb; //num of bursts
+    int iot; //io time
+    //read and create and push back processes
+    while(getline(input, line)){
+        string::iterator itr;
+        string temp ="";
+        int count = 1;
+        itr = line.begin();
+        if((*itr >= 'A') and (*itr<='Z'))        
+        {
+            //first character is pid
+            if(count == 1){
+                p_id = *itr;
+                itr++;
+                itr++;//skip the pipe char
+                count++;
+            }
+            if(count == 2){
+                while(*itr != '|'){
+                    temp.push_back(*itr);
+                    itr++;
+                }
+                itr++;//skip the pipe char
+                iat = std::atoi(temp.c_str());
+                temp.clear();
+                count++;
+            }
+            
+            if(count == 3){
+                while(*itr != '|'){
+                    temp.push_back(*itr);
+                    itr++;
+                }
+                itr++;//skip the pipe char
+                cbt = std::atoi(temp.c_str());
+                temp.clear();
+                count++;
+            }
+            if(count == 4){
+                while(*itr != '|'){
+                    temp.push_back(*itr);
+                    itr++;
+                }
+                itr++;//skip the pipe char
+                nb = std::atoi(temp.c_str());
+                temp.clear();
+                count++;
+            }
+            
+            if(count == 5){
+                while(itr != line.end()){
+                    temp.push_back(*itr);
+                    itr++;
+                }
+                iot = std::atoi(temp.c_str());
+            }
+            
+            notReadyQueue.push_back(Process(p_id, iat, cbt, nb, iot, switchTime, timeslice));
+        }
+    }
+    num_processes = notReadyQueue.size();
+}
+
+//utility function
+void writeFile_fcfs(ofstream &output) {
+    double average_cpu_burst_time = (double)total_cpu_burst_time/total_bursts;
+    double average_wait_time = (double)total_wait_time/total_bursts;
+    double average_turnaround_time = average_cpu_burst_time + average_wait_time + 8;
+    output << "Algorithm FCFS" << endl;
+    output << "-- average CPU burst time: " << setprecision(2) << fixed << average_cpu_burst_time << " ms" << endl;
+    output << "-- average wait time: " << setprecision(2) << fixed << average_wait_time << " ms" << endl;
+    output << "-- average turnaround time: " << setprecision(2) << average_turnaround_time << " ms" << endl;
+    output << "-- total number of context switches: " << total_context_switches << endl;
+    output << "-- total number of preemptions: " << 0 << endl; 
+}
+
+void print_ready_queue() {
+    list<Process>::iterator itr_rq = ready_queue.begin();
+    cout << "[Q ";
+    while(itr_rq != ready_queue.end()) {
+        cout << itr_rq->pid;
+        itr_rq ++;
+        if (itr_rq != ready_queue.end()) cout << " ";
+        else cout << "] " << endl;
+    }
+    if(ready_queue.size() == 0) {
+        cout << "<empty>]" <<endl;
+    }
+}
+
+void calculate_total_cpu_burst_time() {
+    list<Process>::iterator itr_cpu = cpu.begin();
+    while(itr_cpu != cpu.end()) { 
+        total_cpu_burst_time++;
+        itr_cpu++;
+    }        
+}
+
+void calculate_total_wait_time() {
+    
+    list<Process>::iterator itr_rq = ready_queue.begin();
+    while(itr_rq != ready_queue.end()) {
+        total_wait_time++;
+        itr_rq ++;
+    }    
+}
+
+void calculate_total_context_switches() {
+    total_context_switches++;
+}
+
+//putting processes in the ready queue from the notReadyQueue
+//used for all algorithms
+void checkArrival() {
+    for(int i=0;i<notReadyQueue.size();i++) {
+        if(notReadyQueue[i].arrival_time == systemTime) {               
+            ready_queue.push_back(notReadyQueue[i]);
+            cout << "time " << systemTime << "ms: " << "Process " << notReadyQueue[i].pid << " arrived and added to ready queue ";
+            print_ready_queue();
+            notReadyQueue.erase(notReadyQueue.begin()+i);
+            i--;
+        }
+    }   
+}
+
+//putting a process in the CPU when the ready queue isn't empty
+//used for all algorithms
+void startProcess() {
+    if(cpu.size() == 0 and ready_queue.size() != 0) {   
+            list<Process>::iterator itr_rq = ready_queue.begin();
+            if(itr_rq->switch_time == 0) {
+                cout << "time " << systemTime << "ms: " << "Process " << itr_rq->pid << " started using the CPU ";
+                itr_rq->remaining_burst_time--;
+                itr_rq->switch_time = switchTime;
+                cpu.push_back(*itr_rq);
+                calculate_total_context_switches();
+                ready_queue.pop_front();
+                print_ready_queue();              
+            }
+            else itr_rq->switch_time--;
+        }
+}
+
+//Operating the wait queue
+//used for all algorithms
+void checkIO() {
+    if(wait_queue.size() != 0) {
+        list<Process>::iterator itr_wq = wait_queue.begin();
+        
+        while(itr_wq != wait_queue.end()) {
+            if(itr_wq->remaining_block_time == 0) {
+                cout << "time " << systemTime << "ms: " << "Process " << itr_wq->pid << " completed I/O; added to ready queue ";
+                itr_wq->switch_time = switchTime;
+                itr_wq->remaining_block_time = itr_wq->io_time;
+                itr_wq->remaining_burst_time = itr_wq->cpu_burst_time;
+                ready_queue.push_back(*itr_wq);
+                itr_wq = wait_queue.erase(itr_wq);
+                print_ready_queue();
+            }    
+            else {
+                itr_wq->remaining_block_time--;
+                itr_wq++;
+            }
+        } 
+    }
+}
+
+void CPUschedule() {
+            //cases where one process is in the CPU, one process is running.
+        if(cpu.size() != 0) {
+            list<Process>::iterator itr_rq = ready_queue.begin();
+            list<Process>::iterator itr_cpu = cpu.begin();
+            if(itr_cpu->remaining_burst_time == 0 and itr_cpu->remaining_bursts == 1) {   //process terminate
+                if(itr_cpu->switch_time == switchTime) {
+                    cout << "time " << systemTime << "ms: " << "Process " << itr_cpu->pid << " terminated ";
+                    print_ready_queue();
+                    itr_cpu->switch_time--;
+                }
+                else if(itr_cpu->switch_time != 0) {
+                    itr_cpu->switch_time--;
+                }
+                else {          //terminate process and pop out 
+                    //cout << "time " << systemTime-4 << "ms: " << "process " << itr_cpu->pid << " terminated ";
+                    //print_ready_queue();
+                    cpu.pop_back();
+                    total_bursts++;
+                    calculate_total_context_switches();
+                    if (ready_queue.size() != 0) { 
+                        calculate_total_context_switches;
+                    }    
+                }    
+            }    
+            else if(itr_cpu->remaining_burst_time == 0 and itr_cpu->switch_time == 0 and itr_cpu->remaining_bursts != 1) { //process blocked             
+                if (ready_queue.size() != 0) {
+                    itr_rq->switch_time = switchTime;
+                }
+                itr_cpu->remaining_burst_time = itr_cpu->cpu_burst_time-1;
+                itr_cpu->remaining_bursts--;
+                list<Process>::iterator tempIt = wait_queue.begin();
+                while (itr_cpu->pid > tempIt->pid and tempIt != wait_queue.end()) 
+                    tempIt++;
+                if (tempIt == wait_queue.end()) 
+                    wait_queue.push_back(*itr_cpu);
+                else wait_queue.insert(tempIt, *itr_cpu);
+                cpu.pop_back();
+                total_bursts++;
+                calculate_total_context_switches();                
+            }
+            else if(itr_cpu->remaining_burst_time == 0 and itr_cpu->switch_time == switchTime) {     //printing
+                cout << "time " << systemTime << "ms: " << "Process " << itr_cpu->pid << " completed a CPU burst; " << itr_cpu->remaining_bursts-1 << " bursts to go ";
+                print_ready_queue();
+                cout << "time " << systemTime << "ms: " << "Process " << itr_cpu->pid << " switching out of CPU; will block on I/O until time " << systemTime+itr_cpu->io_time+4 << "ms ";
+                print_ready_queue();
+                itr_cpu->switch_time--;
+            }
+            else if(itr_cpu->remaining_burst_time == 0 and itr_cpu->switch_time != 0) {    //switching out 
+                itr_cpu->switch_time--;
+            }    
+            else {
+                itr_cpu->remaining_burst_time--;       // running 1 ms
+            }
+        }        
+    
+}
+
+void fcfs() {        
+    cout << "time " << systemTime << "ms: Simulator started for FCFS [Q <empty>] " << endl;
+        while (notReadyQueue.size() != 0 or cpu.size() != 0 or ready_queue.size() != 0 or wait_queue.size() != 0) {
+        CPUschedule();
+        checkIO();       
+        checkArrival();
+        startProcess();
+        calculate_total_wait_time();
+        calculate_total_cpu_burst_time();
+        systemTime++;
+    }
+    total_cpu_burst_time = total_cpu_burst_time - (total_bursts*switchTime);
+    total_wait_time = total_wait_time - (total_bursts*switchTime);
+    total_context_switches = total_context_switches/2;
+    cout << "time " << systemTime-1 << "ms: Simulator ended for FCFS" << endl << endl;
+}
+
+int main(int argc, char* argv[]){
+    ifstream input("process6");
+    ofstream output("output");
+    readFile(input);
+    fcfs();
+    writeFile_fcfs(output);
+}
